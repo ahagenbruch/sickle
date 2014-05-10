@@ -74,9 +74,13 @@ class Sickle(object):
     :param auth: An optional tuple ('username', 'password')
                  for accessing protected OAI interfaces.
     :type auth: tuple
+    :param compress: An optional boolean to make compressed requests if the server
+                        supports this behaviour. See the optional 'compression' in
+                        the 'Identify' response.
+    'type compress: bool
     """
     def __init__(self, endpoint, http_method='GET', protocol_version='2.0',
-                 max_retries=5, timeout=None, class_mapping=None, auth=None):
+                 max_retries=5, timeout=None, class_mapping=None, auth=None, compress=False):
         self.endpoint = endpoint
         if http_method not in ['GET', 'POST']:
             raise ValueError("Invalid HTTP method: %s! Must be GET or POST.")
@@ -94,6 +98,7 @@ class Sickle(object):
             self.class_mapping = class_mapping
         self.auth = auth
         self.last_response = None
+        self.compress = compress
 
     def harvest(self, **kwargs):
         """Make HTTP requests to the OAI server.
@@ -101,14 +106,21 @@ class Sickle(object):
         :param kwargs: The OAI HTTP arguments.
         :rtype: :class:`sickle.app.OAIResponse`
         """
+        headers = {}
+        if self.compress:
+            headers = {
+                'Accept-Encoding': 'gzip, deflate',
+            }
         for _ in xrange(self.max_retries):
             if self.http_method == 'GET':
                 http_response = requests.get(self.endpoint, params=kwargs,
-                                             timeout=self.timeout, auth=self.auth)
+                                             timeout=self.timeout, auth=self.auth, headers=headers)
             else:
                 http_response = requests.post(self.endpoint, data=kwargs,
-                                              timeout=self.timeout, auth=self.auth)
-            if http_response.status_code == 503:
+                                              timeout=self.timeout, auth=self.auth, headers=headers)
+            # Although the OAI-PMH standard only gives the example of status code 503 for retrying requests,
+            # in the wild we also see other HTTP errors where retrying is a solid strategy...
+            if http_response.status_code == 503 or http_response.status_code == 500 or http_response.status_code == 502:
                 try:
                     retry_after = int(http_response.headers.get('retry-after'))
                 except TypeError:
@@ -198,19 +210,19 @@ class OAIResponse(object):
     :param params: The OAI parameters for the request.
     :type params: dict
     """
-    def __init__(self, http_response, params):
+    def __init__(self, response, params):
         self.params = params
-        self.http_response = http_response
+        self.response = response
 
     @property
     def raw(self):
         """The server's response as unicode."""
-        return self.http_response.text
+        return self.response.text
 
     @property
     def xml(self):
         """The server's response as parsed XML."""
-        return etree.XML(self.http_response.text.encode("utf8"), parser=XMLParser)
+        return etree.XML(self.response.text.encode("utf8"), parser=XMLParser)
 
     def __repr__(self):
         return '<OAIResponse %s>' % self.params.get('verb')
