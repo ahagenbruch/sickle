@@ -111,7 +111,7 @@ class Sickle(object):
             headers = {
                 'Accept-Encoding': 'gzip, deflate',
             }
-        for _ in xrange(self.max_retries):
+        for _ in range(self.max_retries):
             if self.http_method == 'GET':
                 http_response = requests.get(self.endpoint, params=kwargs,
                                              timeout=self.timeout, auth=self.auth, headers=headers)
@@ -125,7 +125,7 @@ class Sickle(object):
                     retry_after = int(http_response.headers.get('retry-after'))
                 except TypeError:
                     retry_after = 20
-                print "Waiting %d seconds ... " % retry_after
+                logger.warn("Waiting %d seconds ... " % retry_after)
                 time.sleep(retry_after)
             else:
                 http_response.raise_for_status()
